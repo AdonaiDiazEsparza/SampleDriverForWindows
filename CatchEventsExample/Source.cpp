@@ -93,6 +93,8 @@ void DriverUnloadRoutine(PDRIVER_OBJECT DriverObject)
 
     // Delete at the last the device Object assigned  in the driver object
     IoDeleteDevice(devObj);
+
+    KdPrint((DRIVER_PREFIX "Driver Unloaded"));
 }
 
 // Routine to display all process created
