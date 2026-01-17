@@ -16,6 +16,7 @@ DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
 
 	UNREFERENCED_PARAMETER(RegistryPath);
 
+	// Add Unload when you stop or uninstall the driver 
 	DriverObject->DriverUnload = SampleUnload;
 
     // Simple print Sample Driver
