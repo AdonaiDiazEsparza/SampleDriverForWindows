@@ -8,7 +8,9 @@
     Trying to catch events from the kernel. I'll try to get events from process.
 */
 
+#include <Ntifs.h>
 #include <ntddk.h>
+#include <wdm.h>
 
 /*  DEFINES     */
 
@@ -17,17 +19,9 @@
 #define OBJECT_NAME_STRING L"\\Device\\EVENT_CATCHER"
 #define SYMBOLIC_NAME_STRING L"\\?\\EVENT_CATCHER"
 
-/*  STRUCTS     */
-
-// Struct for the extention or data to catch
-typedef struct _DEVICE_EXTENSION {
-    PDEVICE_OBJECT  Self;   //  the device object
-    LIST_ENTRY      EventQueueHead; // where all the user notification requests are queued
-    KSPIN_LOCK      QueueLock;  // Lock the queue
-} DEVICE_EXTENSION, * PDEVICE_EXTENSION;
-
 /*  Routines    */
 void DriverUnloadRoutine(PDRIVER_OBJECT DriverObject); // Unload routine
+void NotifyForAProcessCreation(HANDLE ppid, HANDLE pid, BOOLEAN create); // Routine to notify when a process starts/finished.
 
 // Entry Point for the Driver
 extern "C"
@@ -36,11 +30,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
     UNREFERENCED_PARAMETER(RegistryPath);
 
     PDEVICE_OBJECT      deviceObject; // Pointer to Object
-    PDEVICE_EXTENSION   deviceExtension; // Extesion use for the object device
-
-    // By the moment just for this variable
-    UNREFERENCED_PARAMETER(deviceExtension);
-
     UNICODE_STRING      ntDeviceName = RTL_CONSTANT_STRING(OBJECT_NAME_STRING); // Name for the Object 
     UNICODE_STRING      symbolicLinkName = RTL_CONSTANT_STRING(SYMBOLIC_NAME_STRING); // The link name for the object 'deviceObject'
     NTSTATUS            status; // The status return 
@@ -48,11 +37,12 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
     KdPrint((DRIVER_PREFIX "======> DRIVER ENTRY POINT\n"));
 
     /* Create object to use it */
-    status = IoCreateDevice(DriverObject,               // DriverObject
-        sizeof(DEVICE_EXTENSION), // DeviceExtensionSize 
+    status = IoCreateDevice(
+        DriverObject,               // DriverObject
+        0,   // DeviceExtensionSize 
         &ntDeviceName,              // DeviceName
         FILE_DEVICE_UNKNOWN,        // DeviceType
-        FILE_DEVICE_SECURE_OPEN,    // DeviceCharacteristics
+        0 ,// FILE_DEVICE_SECURE_OPEN,    // DeviceCharacteristics
         FALSE,                      // Not Exclusive
         &deviceObject               // DeviceObject
     );
@@ -75,6 +65,13 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
         return(status);
     }
 
+    // Set the status to obtain all process
+    status = PsSetCreateProcessNotifyRoutine(NotifyForAProcessCreation, FALSE);
+
+    if (!NT_SUCCESS(status)) {
+        KdPrint((DRIVER_PREFIX "IoCreateSymbolicLink returned 0x%x\n", status));
+    }
+
     return status;
 }
 
@@ -87,10 +84,41 @@ void DriverUnloadRoutine(PDRIVER_OBJECT DriverObject)
     PDEVICE_OBJECT devObj = DriverObject->DeviceObject;
     UNICODE_STRING symbolicLinkName;
 
+    // Remove routine to detect process
+    PsSetCreateProcessNotifyRoutine(NotifyForAProcessCreation, TRUE);
+
     // Delete symbolic link name for the driver object
     RtlInitUnicodeString(&symbolicLinkName, SYMBOLIC_NAME_STRING);
     IoDeleteSymbolicLink(&symbolicLinkName);
 
     // Delete at the last the device Object assigned  in the driver object
     IoDeleteDevice(devObj);
+}
+
+// Routine to display all process created
+void NotifyForAProcessCreation(HANDLE ppid, HANDLE pid, BOOLEAN create)
+{
+    // Indicates if the process was created
+    if (create)
+    {
+        PEPROCESS process = NULL; // Variable to storage the process 
+        PUNICODE_STRING parentProcessName = NULL, processName = NULL; // parentProcess and process name
+
+        // Here we look for the parent process by it parent process id
+        PsLookupProcessByProcessId(ppid, &process);
+
+        // Get the name of the parent process
+        SeLocateProcessImageName(process, &parentProcessName);
+
+        // Locate the Process by it pid 
+        PsLookupProcessByProcessId(pid, &process);
+        SeLocateProcessImageName(process, &processName);
+         
+        // print the process
+        KdPrint((DRIVER_PREFIX "%d %wZ\n\t\t%d %wZ", ppid, parentProcessName, pid, processName));
+    }
+    else
+    {
+        KdPrint((DRIVER_PREFIX "Process %d lost child %d", ppid, pid));
+    }
 }
