@@ -2,27 +2,6 @@
 #include <ntddk.h>
 #include <wdm.h>
 
-// handle incoming notifications about new/terminated processes and kill
-// processes that have "notepad" in their commandline arguments
-void sCreateProcessNotifyRoutineEx(PEPROCESS process, HANDLE pid, PPS_CREATE_NOTIFY_INFO createInfo)
-{
-	UNREFERENCED_PARAMETER(process);
-	UNREFERENCED_PARAMETER(pid);
-	
-	if (createInfo != NULL)
-	{
-		if (wcsstr(createInfo->CommandLine->Buffer, L"notepad") != NULL)
-		{
-			DbgPrint("[!] Access to launch notepad.exe was denied!");
-			createInfo->CreationStatus = STATUS_ACCESS_DENIED;
-		}
-	}
-}
-
-// subscribe sCreateProcessNotifyRoutineEx to new / terminated process notifications
-// PsSetCreateProcessNotifyRoutineEx(sCreateProcessNotifyRoutineEx, FALSE);
-
-/*      MAIN CODE ========================================================================================= */
 DRIVER_DISPATCH HandleCustomIOCTL;
 #define IOCTL_SPOTLESS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2049, METHOD_BUFFERED, FILE_ANY_ACCESS)
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING(L"\\Device\\SpotlessDevice");
