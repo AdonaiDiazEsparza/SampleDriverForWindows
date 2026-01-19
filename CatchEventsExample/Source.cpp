@@ -16,6 +16,7 @@
 
 #define DRIVER_PREFIX "EVENT_CATCHER: "
 
+/* By the moment are unused*/
 #define OBJECT_NAME_STRING L"\\Device\\EVENT_CATCHER"
 #define SYMBOLIC_NAME_STRING L"\\?\\EVENT_CATCHER"
 
@@ -28,49 +29,52 @@ extern "C"
 NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
 {
     UNREFERENCED_PARAMETER(RegistryPath);
+    UNREFERENCED_PARAMETER(DriverObject);
 
-    PDEVICE_OBJECT      deviceObject; // Pointer to Object
-    UNICODE_STRING      ntDeviceName = RTL_CONSTANT_STRING(OBJECT_NAME_STRING); // Name for the Object 
-    UNICODE_STRING      symbolicLinkName = RTL_CONSTANT_STRING(SYMBOLIC_NAME_STRING); // The link name for the object 'deviceObject'
+    //PDEVICE_OBJECT      deviceObject; // Pointer to Object
+    //UNICODE_STRING      ntDeviceName = RTL_CONSTANT_STRING(OBJECT_NAME_STRING); // Name for the Object 
+    //UNICODE_STRING      symbolicLinkName = RTL_CONSTANT_STRING(SYMBOLIC_NAME_STRING); // The link name for the object 'deviceObject'
     NTSTATUS            status; // The status return 
 
-    KdPrint((DRIVER_PREFIX "======> DRIVER ENTRY POINT\n"));
+    DbgPrint(DRIVER_PREFIX "======> DRIVER ENTRY POINT\n");
 
     /* Create object to use it */
-    status = IoCreateDevice(
-        DriverObject,               // DriverObject
-        0,   // DeviceExtensionSize 
-        &ntDeviceName,              // DeviceName
-        FILE_DEVICE_UNKNOWN,        // DeviceType
-        0 ,// FILE_DEVICE_SECURE_OPEN,    // DeviceCharacteristics
-        FALSE,                      // Not Exclusive
-        &deviceObject               // DeviceObject
-    );
+    //status = IoCreateDevice(
+    //    DriverObject,               // DriverObject
+    //    0,   // DeviceExtensionSize 
+    //    &ntDeviceName,              // DeviceName
+    //    FILE_DEVICE_UNKNOWN,        // DeviceType
+    //    0,// FILE_DEVICE_SECURE_OPEN,    // DeviceCharacteristics
+    //    FALSE,                      // Not Exclusive
+    //    &deviceObject               // DeviceObject
+    //);
 
     // Check any error
-    if (!NT_SUCCESS(status)) {
+    /*if (!NT_SUCCESS(status)) {
         KdPrint((DRIVER_PREFIX " Error Creating object: 0x%x\n", status));
         return status;
-    }
+    }*/
 
     /* Set Entry Points */
     DriverObject->DriverUnload = DriverUnloadRoutine;
 
     /* Create the link name for the Device Object in the Driver*/
-    status = IoCreateSymbolicLink(&symbolicLinkName, &ntDeviceName);
+    /*status = IoCreateSymbolicLink(&symbolicLinkName, &ntDeviceName);
 
     if (!NT_SUCCESS(status)) {
         IoDeleteDevice(deviceObject);
         KdPrint((DRIVER_PREFIX "IoCreateSymbolicLink returned 0x%x\n", status));
         return(status);
-    }
+    }*/
 
     // Set the status to obtain all process
     status = PsSetCreateProcessNotifyRoutine(NotifyForAProcessCreation, FALSE);
 
     if (!NT_SUCCESS(status)) {
-        KdPrint((DRIVER_PREFIX "IoCreateSymbolicLink returned 0x%x\n", status));
+        KdPrint((DRIVER_PREFIX "From Notify assignation routine returned 0x%x\n", status));
     }
+
+    //status = PsSetLoadImageNotifyRoutine();
 
     return status;
 }
@@ -78,23 +82,24 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
 // The routine for the driver unload by the moment
 void DriverUnloadRoutine(PDRIVER_OBJECT DriverObject)
 {
-    KdPrint((DRIVER_PREFIX "====>Unloading driver"));
+    DbgPrint(DRIVER_PREFIX "====>Unloading runtime driver... ");
+    UNREFERENCED_PARAMETER(DriverObject);
 
     /* Set the names and objects */
-    PDEVICE_OBJECT devObj = DriverObject->DeviceObject;
-    UNICODE_STRING symbolicLinkName;
+    //PDEVICE_OBJECT devObj = DriverObject->DeviceObject;
+    //UNICODE_STRING symbolicLinkName;
 
     // Remove routine to detect process
     PsSetCreateProcessNotifyRoutine(NotifyForAProcessCreation, TRUE);
 
     // Delete symbolic link name for the driver object
-    RtlInitUnicodeString(&symbolicLinkName, SYMBOLIC_NAME_STRING);
-    IoDeleteSymbolicLink(&symbolicLinkName);
+    //RtlInitUnicodeString(&symbolicLinkName, SYMBOLIC_NAME_STRING);
+    //IoDeleteSymbolicLink(&symbolicLinkName);
 
     // Delete at the last the device Object assigned  in the driver object
-    IoDeleteDevice(devObj);
+    //IoDeleteDevice(devObj);
 
-    KdPrint((DRIVER_PREFIX "Driver Unloaded"));
+    DbgPrint(DRIVER_PREFIX "Driver Unloaded... \n");
 }
 
 // Routine to display all process created
@@ -103,6 +108,9 @@ void NotifyForAProcessCreation(HANDLE ppid, HANDLE pid, BOOLEAN create)
     // Indicates if the process was created
     if (create)
     {
+
+        DbgPrint(DRIVER_PREFIX "PROCESO CREADO: \n");
+
         PEPROCESS process = NULL; // Variable to storage the process 
         PUNICODE_STRING parentProcessName = NULL, processName = NULL; // parentProcess and process name
 
@@ -115,12 +123,25 @@ void NotifyForAProcessCreation(HANDLE ppid, HANDLE pid, BOOLEAN create)
         // Locate the Process by it pid 
         PsLookupProcessByProcessId(pid, &process);
         SeLocateProcessImageName(process, &processName);
-         
+
         // print the process
-        KdPrint((DRIVER_PREFIX "%d %wZ\n\t\t%d %wZ", ppid, parentProcessName, pid, processName));
+        DbgPrint(DRIVER_PREFIX "%d %wZ\n\t\t%d %wZ\n", ppid, parentProcessName, pid, processName);
     }
     else
     {
-        KdPrint((DRIVER_PREFIX "Process %d lost child %d", ppid, pid));
+        DbgPrint(DRIVER_PREFIX "ELIMINACION DE PROCESO: \n");
+        DbgPrint(DRIVER_PREFIX "Procesexos %d lost child %d\n", ppid, pid);
     }
 }
+
+// Routine to detect DLL
+//void NotifyDLLLoaded(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
+//{
+//    UNREFERENCED_PARAMETER(imageInfo);
+//    PEPROCESS process = NULL;
+//    PUNICODE_STRING processName = NULL;
+//    PsLookupProcessByProcessId(pid, &process);
+//    SeLocateProcessImageName(process, &processName);
+//
+//    DbgPrint("%wZ (%d) loaded %wZ", processName, pid, imageName);
+//}
