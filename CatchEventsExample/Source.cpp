@@ -1,4 +1,6 @@
+#include <Ntifs.h>
 #include <ntddk.h>
+#include <wdm.h>
 
 /*
     Code to detect when a dll is load it
