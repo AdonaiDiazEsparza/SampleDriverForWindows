@@ -41,6 +41,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
     UNREFERENCED_PARAMETER(RegistryPath);
     UNREFERENCED_PARAMETER(DriverObject);
 
+    // Set the Unload function for the driver Object
+	DriverObject->DriverUnload = UnloadDriver;
+
     PRINT("Load Driver\n");
 
     ExInitializeFastMutex(&g_AuthorizationLock);
@@ -93,22 +96,26 @@ void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
 {
     UNREFERENCED_PARAMETER(imageInfo);
 
+    // If the image buffer is empty or nullptr returns
     if (!imageName || !imageName->Buffer)
         return;
 
+    // here we compare the name of the dll
     if (wcsstr(imageName->Buffer, g_ProtectedDll.Buffer)) {
 
+        // Get mutex to avoid crashes
         ExAcquireFastMutex(&g_AuthorizationLock);
 
+        // If the Process is a nullptr, it assigns this process as the main to get the 
         if (!g_IsAuthorizedSet) {
             g_AuthorizedPid = pid;
             g_IsAuthorizedSet = TRUE;
 
-            PRINT("DLL loaded by AUTHORIZED process PID %d\n", (ULONG)(ULONG_PTR)pid);
+            PRINT("DLL loaded by AUTHORIZED process PID %d\n", pid);
         }
         else if (g_AuthorizedPid != pid) {
             // Proceso no autorizado
-            PRINT("BLOCKED DLL load by PID %d (authorized PID %d)\n", (ULONG)(ULONG_PTR)pid, (ULONG)(ULONG_PTR)g_AuthorizedPid);
+            PRINT("BLOCKED DLL load by PID %d (authorized PID %d)\n", pid, g_AuthorizedPid);
 
             // AQUÍ después podrías:
             // - Marcar
@@ -116,6 +123,7 @@ void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
             // - Terminar proceso
         }
 
+        // Give the mutex
         ExReleaseFastMutex(&g_AuthorizationLock);
     }
 }
@@ -124,24 +132,26 @@ void NotifyForAProcessEx(PEPROCESS process, HANDLE pid, PPS_CREATE_NOTIFY_INFO c
 {
     UNREFERENCED_PARAMETER(process);
 
+    // if the process is finishes
     if (createInfo == NULL) {
+        // get the mutex to avoid crashes
         ExAcquireFastMutex(&g_AuthorizationLock);
 
+        // If the process is eliminated, throw message
         if (g_IsAuthorizedSet && g_AuthorizedPid == pid) {
             g_IsAuthorizedSet = FALSE;
             g_AuthorizedPid = NULL;
 
-            PRINT("Authorized process exited\n");
+            PRINT("[!] El proceso autorizado se a terminado\n");
         }
 
+        // Give mutex
         ExReleaseFastMutex(&g_AuthorizationLock);
         return;
     }
 
-    // Proceso creado
+    // Process Created
     if (createInfo->ImageFileName) {
-        PRINT("Process created: %wZ (PID %d)\n",
-            createInfo->ImageFileName,
-            (ULONG)(ULONG_PTR)pid);
+        PRINT("[+]  Process created: %wZ (PID %d)\n", createInfo->ImageFileName, pid);
     }
 }

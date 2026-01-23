@@ -47,6 +47,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
         return status;
     }
 
+    // Set the Unload function for the driver Object
+	DriverObject->DriverUnload = UnloadDriver;
+
     PRINT("Driver Unloaded\n");
 
     return status;
