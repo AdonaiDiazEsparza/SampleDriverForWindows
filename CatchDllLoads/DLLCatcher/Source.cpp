@@ -15,6 +15,10 @@
 
 UNICODE_STRING g_ProtectedDll = RTL_CONSTANT_STRING(L"hola.dll");
 
+// Process authorized
+HANDLE g_AuthorizedPid = NULL;
+BOOLEAN g_IsAuthorizedSet = FALSE;
+
 /* Unload driver routine */
 void UnloadDriver(PDRIVER_OBJECT  DriverObject);
 
@@ -78,5 +82,17 @@ void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
 
     if (wcsstr(imageName->Buffer, g_ProtectedDll.Buffer)) {
         PRINT("DLL ENCONTRADA EN PROCESO %wZ (%d)", processName, pid);
+
+        // If the Process is a nullptr, it assigns this process as the main to get the 
+        if (!g_IsAuthorizedSet) {
+            g_AuthorizedPid = pid;
+            g_IsAuthorizedSet = TRUE;
+
+            PRINT("[+] Configurando Valido process PID %d", pid);
+        }
+        else if (g_AuthorizedPid != pid) {
+            // Proceso no autorizado
+            PRINT("[!] Se hizo una carga a un proceso no autorizado %d", pid);
+        }
     }
 }
