@@ -16,22 +16,6 @@
 UNICODE_STRING g_ProtectedDll = RTL_CONSTANT_STRING(L"hola.dll");
 
 /* Unload driver routine */
-void UnloadDriver(PDRIVER_OBJECT  DriverObject);#include <Ntifs.h>
-#include <ntddk.h>
-#include <wdm.h>
-
-/*
-    Code to check wich dll where load, so we need to know and filter the exactly dll in a process are loading
-*/
-
-#define DRIVER_PREFIX "==========> DRIVER_TEST: " // Prefix for the logs
-
-#define PRINT(fmt, ...) \
-    DbgPrint(DRIVER_PREFIX fmt, ##__VA_ARGS__)
-
-/* GLOBAL VARIABLES */
-
-/* Unload driver routine */
 void UnloadDriver(PDRIVER_OBJECT  DriverObject);
 
 /* Routine to detect when a DLL is loaded in a new process */
