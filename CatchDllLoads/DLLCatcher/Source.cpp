@@ -29,65 +29,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
     UNREFERENCED_PARAMETER(RegistryPath);
     UNREFERENCED_PARAMETER(DriverObject);
 
-    PRINT("Load Driver\n");
-
-    // Set routine to detect the DLLs
-    status = PsSetLoadImageNotifyRoutine(LoadDLLNotify);
-
-    if (!NT_SUCCESS(status))
-    {
-        PRINT("ERROR CREATING ROUTINE TO DETECT THE DLL (0x%X)\n", status);
-        return status;
-    }
-
-    // Set the Unload function for the driver Object
-    DriverObject->DriverUnload = UnloadDriver;
-
-    PRINT("Driver Unloaded\n");
-
-    return status;
-}
-
-// Routine for Unload the driver
-void UnloadDriver(PDRIVER_OBJECT  DriverObject)
-{
-    UNREFERENCED_PARAMETER(DriverObject);
-
-    NTSTATUS status = STATUS_SUCCESS;
-
-    status = PsRemoveLoadImageNotifyRoutine(LoadDLLNotify);
-
-    if (!NT_SUCCESS(status)) {
-        PRINT("[!] ERROR FATAL REMOVIENDO RUTINA DE CARGA DE DLL");
-    }
-
-    PRINT("DRIVER UNLOADED\n");
-}
-
-// Routine to detect when a DLL is loaded
-void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
-{
-    UNREFERENCED_PARAMETER(imageInfo);
-    PEPROCESS process = NULL;
-    PUNICODE_STRING processName = NULL;
-    PsLookupProcessByProcessId(pid, &process);
-    SeLocateProcessImageName(process, &processName);
-
-    PRINT("EL PROCESO QUE HACE LA CARGA ES %wZ (%d) Y LA DLL %wZ\n", processName, pid, imageName);
-}
-
-
-/* Routine to detect when a DLL is loaded in a new process */
-void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo);
-
-extern "C"
-NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
-{
-    NTSTATUS status = STATUS_SUCCESS;
-
-    UNREFERENCED_PARAMETER(RegistryPath);
-    UNREFERENCED_PARAMETER(DriverObject);
-
     PRINT("Load Driver");
 
     // Set routine to detect the DLLs
