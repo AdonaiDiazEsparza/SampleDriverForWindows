@@ -136,7 +136,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
         ConfigureDetours();
         break;
     case DLL_THREAD_ATTACH:
-        detachDetours();
+        // detachDetours();
         break;
     case DLL_THREAD_DETACH:
     case DLL_PROCESS_DETACH:

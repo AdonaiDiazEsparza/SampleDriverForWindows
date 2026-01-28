@@ -9,6 +9,7 @@
 
 UNICODE_STRING found_DLL = RTL_CONSTANT_STRING(L"hola.dll");
 
+
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
     LIST_ENTRY InLoadOrderLinks;
@@ -197,14 +198,9 @@ EVT_WDF_DRIVER_DEVICE_ADD KmdfEvtDeviceAdd;
 
 #define IMAGE_DIRECTORY_ENTRY_EXPORT 0
 #define NTDLL L"ntdll.dll"
-#define DLL_FILTERED L"hola.dll"
 #define EDRDLL L"C:\\test\\edrHook.dll"
 
-
 NTKERNELAPI PPEB NTAPI PsGetProcessPeb(_In_ PEPROCESS Process);
-NTKERNELAPI PVOID PsGetProcessWow64Process(__in PEPROCESS Process);
-NTKERNELAPI BOOLEAN NTAPI PsIsProtectedProcess(PEPROCESS Process);
-
 
 typedef NTSTATUS(__stdcall* LdrLoadDll_t)(_In_ PWCHAR PathToFile, _In_ ULONG Flags, _In_ PUNICODE_STRING ModuleFileName, _Out_ PHANDLE ModuleHandle);
 
@@ -298,7 +294,7 @@ void InjectDLL(PEPROCESS Process) {
     UNICODE_STRING dllpath_ustr;
     NTSTATUS status = STATUS_SUCCESS;
 
-    DbgPrint("[+] InjectDLL execution\n");
+    PRINT("[.] Ejecutando inyeccion de DLL");
 
     KAPC_STATE* apc_state = (KAPC_STATE*)ExAllocatePool(NonPagedPool, sizeof(KAPC_STATE));
     KeStackAttachProcess(Process, apc_state);
@@ -306,23 +302,23 @@ void InjectDLL(PEPROCESS Process) {
     RtlInitUnicodeString(&ntdll_ustr, NTDLL);
     pLdrLoadDll = (LdrLoadDll_t)(GetFunctionAddress(peb, &ntdll_ustr, "LdrLoadDll"));
 
-    DbgPrint("[+] LdrLoadDll address %p\n", pLdrLoadDll);
+    PRINT("[+] LdrLoadDll address %p", pLdrLoadDll);
 
     __try {
-        DbgPrint("[+] Allocating ctx memory\n");
+        PRINT("[+] Asignando contexto en memoria");
         status = ZwAllocateVirtualMemory(NtCurrentProcess(), (PVOID*)&ctx, 0, &ctxSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(status)) {
-            DbgPrint("[-] Failed to allocate ctx memory:0x%x\n", status);
+            PRINT("[-] Fallo de asignacion de contexto en memoria:0x%x", status);
             __leave;
         }
 
-        DbgPrint("[+] Initializing ctx structure values\n");
+        PRINT("[+] Inicializando valores en contexto");
         ctx->pLdrLoadDll = pLdrLoadDll;
         RtlInitEmptyUnicodeString(&ctx->DllName, ctx->Buffer, sizeof(ctx->Buffer));
         RtlInitUnicodeString(&dllpath_ustr, EDRDLL);
         RtlCopyUnicodeString(&ctx->DllName, &dllpath_ustr);
 
-        DbgPrint("[+] Allocating pUserApcCode\n");
+        PRINT("[+] Asignando ApcCode");
 
         status = ZwAllocateVirtualMemory(NtCurrentProcess(), (PVOID*)&pUserApcCode, 0, &apcRoutineSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
@@ -331,20 +327,42 @@ void InjectDLL(PEPROCESS Process) {
         }
         RtlCopyMemory(pUserApcCode, (PVOID*)&UserApcRoutine, apcRoutineSize);
 
-        DbgPrint("[+] Succefull RtlCopyMemory call\n");
+        PRINT("[+] RtlCopyMemory");
         PKAPC Apc = ExAllocatePool(NonPagedPool, sizeof(KAPC));
         KeInitializeApc(Apc, PsGetCurrentThread(), OriginalApcEnvironment, KernelApcRoutine, NULL, (PKNORMAL_ROUTINE)pUserApcCode, UserMode, ctx);
 
-        DbgPrint("[+] Succefull KeInitializeApc call\n");
+        PRINT("[+] Succefull KeInitializeApc call");
         if (!KeInsertQueueApc(Apc, NULL, NULL, 0)) {
             ExFreePool(Apc);
         }
 
-        DbgPrint("[+] Succefull KeInsertQueueApc call\n");
+        PRINT("[+] Succefull KeInsertQueueApc call");
     }
 
     __finally {
         KeUnstackDetachProcess(apc_state);
+        PRINT("[!] ERROR EN ASIGNACION DE VALORES");
+    }
+}
+
+// Routine to detect when a DLL is loaded
+void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
+{
+    UNREFERENCED_PARAMETER(imageInfo);
+    UNREFERENCED_PARAMETER(imageName);
+
+    if (!imageName || !imageName->Buffer)
+        return;
+
+    PEPROCESS process = NULL;
+    PUNICODE_STRING processName = NULL;
+    PsLookupProcessByProcessId(pid, &process);
+    SeLocateProcessImageName(process, &processName);
+
+    if (wcsstr(imageName->Buffer, found_DLL.Buffer))
+    {
+        PRINT("DLL ENCONTRADA EN PROCESO %wZ (%d)", processName, pid);
+         InjectDLL(process);
     }
 }
 
@@ -362,30 +380,6 @@ void UnloadDriver(PDRIVER_OBJECT  DriverObject)
     }
 
     PRINT("DRIVER UNLOADED");
-}
-
-// Routine to detect when a DLL is loaded
-void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
-{
-    UNREFERENCED_PARAMETER(imageInfo);
-    UNREFERENCED_PARAMETER(imageName);
-
-    if (!imageName || !imageName->Buffer)
-        return;
-
-    PEPROCESS process = NULL;
-    PUNICODE_STRING processName = NULL;
-    PsLookupProcessByProcessId(pid, &process);
-    SeLocateProcessImageName(process, &processName);
-
-    if (!imageInfo->SystemModeImage &&
-        !PsIsProtectedProcess(process) &&
-        !PsGetProcessWow64Process(process) &&
-        UnicodeStringEndswith(imageName, &found_DLL))
-    {
-        PRINT("DLL ENCONTRADA EN PROCESO %wZ (%d)", processName, pid);
-        // InjectDLL(process);
-    }
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
