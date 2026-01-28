@@ -2,6 +2,13 @@
 #include <ntddk.h>
 #include <wdf.h>
 
+#define DRIVER_PREFIX "=> DRIVER_TEST: " // Prefix for the logs
+
+#define PRINT(fmt, ...) \
+    DbgPrint(DRIVER_PREFIX fmt "\n", ##__VA_ARGS__)
+
+UNICODE_STRING found_DLL = RTL_CONSTANT_STRING(L"hola.dll");
+
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
     LIST_ENTRY InLoadOrderLinks;
@@ -191,7 +198,7 @@ EVT_WDF_DRIVER_DEVICE_ADD KmdfEvtDeviceAdd;
 #define IMAGE_DIRECTORY_ENTRY_EXPORT 0
 #define NTDLL L"ntdll.dll"
 #define DLL_FILTERED L"hola.dll"
-#define EDRDLL L"C:\\edrHook.dll"
+#define EDRDLL L"C:\\test\\edrHook.dll"
 
 
 NTKERNELAPI PPEB NTAPI PsGetProcessPeb(_In_ PEPROCESS Process);
@@ -341,52 +348,68 @@ void InjectDLL(PEPROCESS Process) {
     }
 }
 
+// Routine for Unload the driver
+void UnloadDriver(PDRIVER_OBJECT  DriverObject)
+{
+    UNREFERENCED_PARAMETER(DriverObject);
 
-// Esta es la rutina de Notificar DLL
-void pLoadImageNotifyRoutine(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo) {
+    NTSTATUS status = STATUS_SUCCESS;
+
+    status = PsRemoveLoadImageNotifyRoutine(LoadDLLNotify);
+
+    if (!NT_SUCCESS(status)) {
+        PRINT("[!] ERROR FATAL REMOVIENDO RUTINA DE CARGA DE DLL");
+    }
+
+    PRINT("DRIVER UNLOADED");
+}
+
+// Routine to detect when a DLL is loaded
+void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
+{
+    UNREFERENCED_PARAMETER(imageInfo);
+    UNREFERENCED_PARAMETER(imageName);
+
+    if (!imageName || !imageName->Buffer)
+        return;
+
     PEPROCESS process = NULL;
     PUNICODE_STRING processName = NULL;
-    UNICODE_STRING found_dll;
-    if (pid != 0) {
-        PsLookupProcessByProcessId(pid, &process);
-        SeLocateProcessImageName(process, &processName);
-        RtlInitUnicodeString(&found_dll, DLL_FILTERED);
-        if (!imageInfo->SystemModeImage &&
-            !PsIsProtectedProcess(process) &&
-            !PsGetProcessWow64Process(process) &&
-            UnicodeStringEndswith(imageName, &found_dll)) {
-            DbgPrint("%wZ (%d) loaded %wZ\n", processName, pid, imageName);
-            InjectDLL(process);
-        }
+    PsLookupProcessByProcessId(pid, &process);
+    SeLocateProcessImageName(process, &processName);
+
+    if (!imageInfo->SystemModeImage &&
+        !PsIsProtectedProcess(process) &&
+        !PsGetProcessWow64Process(process) &&
+        UnicodeStringEndswith(imageName, &found_DLL))
+    {
+        PRINT("DLL ENCONTRADA EN PROCESO %wZ (%d)", processName, pid);
+        // InjectDLL(process);
     }
 }
 
-
-void DriverUnload(IN WDFDRIVER Driver) {
-    DRIVER_OBJECT* DriverObject;
-    DbgPrint("DriverUnload: Removing LoadImageNotifyRoutine\n");
-    PsRemoveLoadImageNotifyRoutine(pLoadImageNotifyRoutine);
-    DriverObject = WdfDriverWdmGetDriverObject(Driver);
-    UNREFERENCED_PARAMETER(DriverObject);
-}
-
-
-NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath) {
-    WDF_DRIVER_CONFIG config;
-    WDF_DRIVER_CONFIG_INIT(&config, KmdfEvtDeviceAdd);
-    config.EvtDriverUnload = DriverUnload;
-    NTSTATUS status = WdfDriverCreate(DriverObject, RegistryPath, WDF_NO_OBJECT_ATTRIBUTES, &config, WDF_NO_HANDLE);
-    DbgPrint("SimpleEDRDriverDriverEntry: Setting LoadImageNotifyRoutine\n");
-    PsSetLoadImageNotifyRoutine(pLoadImageNotifyRoutine);
-    return status;
-}
-
-
-NTSTATUS KmdfEvtDeviceAdd(_In_ WDFDRIVER Driver, _Inout_ PWDFDEVICE_INIT DeviceInit)
+NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
 {
-    UNREFERENCED_PARAMETER(Driver);
-    NTSTATUS status;
-    WDFDEVICE hDevice;
-    status = WdfDeviceCreate(&DeviceInit, WDF_NO_OBJECT_ATTRIBUTES, &hDevice);
+    NTSTATUS status = STATUS_SUCCESS;
+
+    UNREFERENCED_PARAMETER(RegistryPath);
+    UNREFERENCED_PARAMETER(DriverObject);
+
+    PRINT("CARGANDO DRIVER");
+
+    // Set routine to detect the DLLs
+    status = PsSetLoadImageNotifyRoutine(LoadDLLNotify);
+
+    if (!NT_SUCCESS(status))
+    {
+        PRINT("ERROR CREANDO RUTINA (0x%X)", status);
+        return status;
+    }
+
+    // Set the Unload function for the driver Object
+    DriverObject->DriverUnload = UnloadDriver;
+
+    PRINT("DRIVER CARGADO");
+
     return status;
 }
