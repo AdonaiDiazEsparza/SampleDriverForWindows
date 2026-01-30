@@ -10,36 +10,63 @@ typedef int (*func)(int, int); // prototype for the DLL
 int main()
 {
     std::cout << "This is the begining of something excited!\n";
-    func _AddFunc;
+    func _AddFunc = nullptr;
 
     std::cout << "[.] Loading the DLL\n";
     HINSTANCE hInstLibrary = LoadLibrary(L"hola.dll");
 
-    if (hInstLibrary) {
+    if (hInstLibrary)
+    {
         std::cout << "[+] DLL Loaded correctly\n";
+
         _AddFunc = (func)GetProcAddress(hInstLibrary, "suma");
 
         if (_AddFunc)
         {
-            std::cout << "23 + 43 = " << _AddFunc(23, 43) << std::endl;
+            std::cout << "[+] Function loaded correctly\n\n";
+
+            // ======================
+            // LOOP INTERACTIVO
+            // ======================
+
+            int a, b;
+
+            while (true)
+            {
+                std::cout << "Enter two numbers (0 0 to exit): ";
+                std::cin >> a >> b;
+
+                // Salida
+                if (a == 0 && b == 0)
+                {
+                    std::cout << "Exiting...\n";
+                    break;
+                }
+
+                int result = _AddFunc(a, b);
+
+                std::cout << "Result: " << a << " + " << b
+                    << " = " << result << "\n\n";
+            }
         }
-        else {
+        else
+        {
             std::cout << "[!] Error loading Add function\n";
         }
-
     }
-    else {
+    else
+    {
         std::cout << "[!] Error loading DLL\n";
     }
 
-    std::cin.get();
-
-    if (hInstLibrary) {
+    if (hInstLibrary)
+    {
         FreeLibrary(hInstLibrary);
         std::cout << "[+] Removing DLL\n";
     }
 
     std::cout << "[+] Finish program\n";
 
+    std::cin.get();
     return 0;
 }

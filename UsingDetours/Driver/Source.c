@@ -297,6 +297,12 @@ void InjectDLL(PEPROCESS Process) {
     PRINT("[.] Ejecutando inyeccion de DLL");
 
     KAPC_STATE* apc_state = (KAPC_STATE*)ExAllocatePool(NonPagedPool, sizeof(KAPC_STATE));
+
+    if(!apc_state){
+        PRINT("[-] Error en la asignacion de memoria");
+        return;
+    }
+
     KeStackAttachProcess(Process, apc_state);
     PPEB peb = PsGetProcessPeb(PsGetCurrentProcess());
     RtlInitUnicodeString(&ntdll_ustr, NTDLL);
@@ -329,6 +335,13 @@ void InjectDLL(PEPROCESS Process) {
 
         PRINT("[+] RtlCopyMemory");
         PKAPC Apc = ExAllocatePool(NonPagedPool, sizeof(KAPC));
+
+        if(!Apc)
+        {
+            PRINT("[-] Error asignando Apc Memory");
+            __leave;
+        }
+
         KeInitializeApc(Apc, PsGetCurrentThread(), OriginalApcEnvironment, KernelApcRoutine, NULL, (PKNORMAL_ROUTINE)pUserApcCode, UserMode, ctx);
 
         PRINT("[+] Succefull KeInitializeApc call");
@@ -341,7 +354,6 @@ void InjectDLL(PEPROCESS Process) {
 
     __finally {
         KeUnstackDetachProcess(apc_state);
-        PRINT("[!] ERROR EN ASIGNACION DE VALORES");
     }
 }
 
