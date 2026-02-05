@@ -1,14 +1,4 @@
-#include <Ntifs.h>
-#include <ntddk.h>
-#include <wdf.h>
-
-#define DRIVER_PREFIX "=> DRIVER_TEST: " // Prefix for the logs
-
-#define PRINT(fmt, ...) \
-    DbgPrint(DRIVER_PREFIX fmt "\n", ##__VA_ARGS__)
-
-UNICODE_STRING found_DLL = RTL_CONSTANT_STRING(L"hola.dll");
-
+#include "DrvDefs.h"
 
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
@@ -74,7 +64,6 @@ typedef struct _IMAGE_DATA_DIRECTORY
     ULONG Size;
 }IMAGE_DATA_DIRECTORY, * PIMAGE_DATA_DIRECTORY;
 
-
 typedef struct _IMAGE_FILE_HEADER
 {
     USHORT Machine;
@@ -85,7 +74,6 @@ typedef struct _IMAGE_FILE_HEADER
     USHORT SizeOfOptionalHeader;
     USHORT Characteristics;
 }IMAGE_FILE_HEADER, * PIMAGE_FILE_HEADER;
-
 
 typedef struct _IMAGE_OPTIONAL_HEADER64 {
     USHORT                 Magic;
@@ -120,7 +108,6 @@ typedef struct _IMAGE_OPTIONAL_HEADER64 {
     IMAGE_DATA_DIRECTORY DataDirectory[16];
 } IMAGE_OPTIONAL_HEADER64, * PIMAGE_OPTIONAL_HEADER64;
 
-
 typedef struct _IMAGE_NT_HEADERS64 {
     ULONG                   Signature;
     IMAGE_FILE_HEADER       FileHeader;
@@ -142,13 +129,11 @@ typedef struct _IMAGE_EXPORT_DIRECTORY
     ULONG   AddressOfNameOrdinals;
 }IMAGE_EXPORT_DIRECTORY, * PIMAGE_EXPORT_DIRECTORY;
 
-
 typedef struct _PEB_LDR_DATA {
     BYTE       Reserved1[8];
     PVOID      Reserved2;
     LIST_ENTRY InLoadOrderModuleList;
 } PEB_LDR_DATA, * PPEB_LDR_DATA;
-
 
 typedef struct _PEB {
     BOOLEAN InheritedAddressSpace;
@@ -160,49 +145,45 @@ typedef struct _PEB {
     PPEB_LDR_DATA Ldr;
 } PEB, * PPEB;
 
-
-typedef enum _KAPC_ENVIRONMENT
+enum KAPC_ENVIRONMENT
 {
     OriginalApcEnvironment,
     AttachedApcEnvironment,
     CurrentApcEnvironment,
     InsertApcEnvironment
-}KAPC_ENVIRONMENT, * PKAPC_ENVIRONMENT;
+};
 
 typedef VOID(NTAPI* PKNORMAL_ROUTINE)(PVOID NormalContext, PVOID SystemArgument1, PVOID SystemArgument2);
 typedef VOID KKERNEL_ROUTINE(PRKAPC Apc, PKNORMAL_ROUTINE* NormalRoutine, PVOID* NormalContext, PVOID* SystemArgument1, PVOID* SystemArgument2);
 typedef KKERNEL_ROUTINE(NTAPI* PKKERNEL_ROUTINE);
 typedef VOID(NTAPI* PKRUNDOWN_ROUTINE)(PRKAPC Apc);
 
-void KeInitializeApc(
-    PRKAPC Apc,
-    PRKTHREAD Thread,
-    KAPC_ENVIRONMENT Environment,
-    PKKERNEL_ROUTINE KernelRoutine,
-    PKRUNDOWN_ROUTINE RundownRoutine,
-    PKNORMAL_ROUTINE NormalRoutine,
-    KPROCESSOR_MODE ProcessorMode,
-    PVOID NormalContext
-);
+extern "C" {
+    NTKERNELAPI void KeInitializeApc(
+        PRKAPC Apc,
+        PRKTHREAD Thread,
+        KAPC_ENVIRONMENT Environment,
+        PKKERNEL_ROUTINE KernelRoutine,
+        PKRUNDOWN_ROUTINE RundownRoutine,
+        PKNORMAL_ROUTINE NormalRoutine,
+        KPROCESSOR_MODE ProcessorMode,
+        PVOID NormalContext
+    );
 
 
-BOOLEAN KeInsertQueueApc(
-    PRKAPC Apc,
-    PVOID SystemArgument1,
-    PVOID SystemArgument2,
-    KPRIORITY Increment
-);
+    NTKERNELAPI BOOLEAN KeInsertQueueApc(
+        PRKAPC Apc,
+        PVOID SystemArgument1,
+        PVOID SystemArgument2,
+        KPRIORITY Increment
+    );
 
-DRIVER_INITIALIZE DriverEntry;
-EVT_WDF_DRIVER_DEVICE_ADD KmdfEvtDeviceAdd;
+    NTKERNELAPI PPEB __stdcall PsGetProcessPeb(_In_ PEPROCESS Process);
+    NTKERNELAPI PVOID PsGetProcessWow64Process(__in PEPROCESS Process);
+    NTKERNELAPI BOOLEAN __stdcall PsIsProtectedProcess(PEPROCESS Process);
 
-#define IMAGE_DIRECTORY_ENTRY_EXPORT 0
-#define NTDLL L"ntdll.dll"
-#define EDRDLL L"C:\\test\\edrHook.dll"
-
-NTKERNELAPI PPEB NTAPI PsGetProcessPeb(_In_ PEPROCESS Process);
-
-typedef NTSTATUS(__stdcall* LdrLoadDll_t)(_In_ PWCHAR PathToFile, _In_ ULONG Flags, _In_ PUNICODE_STRING ModuleFileName, _Out_ PHANDLE ModuleHandle);
+    typedef NTSTATUS (__stdcall*  LdrLoadDll_t)(_In_ PWCHAR PathToFile, _In_ ULONG Flags, _In_ PUNICODE_STRING ModuleFileName, _Out_ PHANDLE ModuleHandle);
+}
 
 typedef struct _INJECTION_CONTEXT {
     LdrLoadDll_t pLdrLoadDll;
@@ -216,6 +197,7 @@ VOID UserApcRoutine(_In_ PVOID NormalContext, _In_ PVOID SystemArgument1, _In_ P
     UNREFERENCED_PARAMETER(SystemArgument2);
     PINJECTION_CONTEXT ctx = (PINJECTION_CONTEXT)NormalContext;
     HANDLE hModule = NULL;
+
     ctx->pLdrLoadDll(0, 0, &ctx->DllName, &hModule);
 }
 
@@ -230,12 +212,12 @@ SIZE_T UserApcRoutineSize() {
 }
 
 
-VOID KernelApcRoutine(_In_ PVOID context, _In_ PVOID arg1, _In_ PVOID arg2, _In_ PVOID arg3, _In_ PVOID arg4) {
-    UNREFERENCED_PARAMETER(arg1);
-    UNREFERENCED_PARAMETER(arg2);
-    UNREFERENCED_PARAMETER(arg3);
-    UNREFERENCED_PARAMETER(arg4);
-    ExFreePool(context);
+VOID KernelApcRoutine(PRKAPC Apc, PKNORMAL_ROUTINE* NormalRoutine, PVOID* NormalContext, PVOID* SystemArgument1, PVOID* SystemArgument2) {
+    UNREFERENCED_PARAMETER(NormalRoutine);
+    UNREFERENCED_PARAMETER(NormalContext);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+    ExFreePool(Apc);
 }
 
 
@@ -290,55 +272,74 @@ void InjectDLL(PEPROCESS Process) {
     PVOID pUserApcCode = NULL;
     SIZE_T apcRoutineSize = UserApcRoutineSize();
     LdrLoadDll_t pLdrLoadDll;
-    UNICODE_STRING ntdll_ustr;
-    UNICODE_STRING dllpath_ustr;
+    UNICODE_STRING ntdll_ustr = RTL_CONSTANT_STRING(NTDLL);
+    UNICODE_STRING dllpath_ustr = RTL_CONSTANT_STRING(EDRDLL);
     NTSTATUS status = STATUS_SUCCESS;
 
-    PRINT("[.] Ejecutando inyeccion de DLL");
+    PRINT("[.] INYECCION DE DLL");
 
-    KAPC_STATE* apc_state = (KAPC_STATE*)ExAllocatePool(NonPagedPool, sizeof(KAPC_STATE));
+    KAPC_STATE* apc_state = (KAPC_STATE*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC_STATE), 'GAT');
 
-    if(!apc_state){
-        PRINT("[-] Error en la asignacion de memoria");
+    if (!apc_state) {
+        PRINT("[!] MEMORIA NO ASIGANDA ERROR FATAL");
         return;
     }
 
+    PRINT("[+] APC STATE memoria asignada");
+
     KeStackAttachProcess(Process, apc_state);
     PPEB peb = PsGetProcessPeb(PsGetCurrentProcess());
-    RtlInitUnicodeString(&ntdll_ustr, NTDLL);
     pLdrLoadDll = (LdrLoadDll_t)(GetFunctionAddress(peb, &ntdll_ustr, "LdrLoadDll"));
 
-    PRINT("[+] LdrLoadDll address %p", pLdrLoadDll);
+    PRINT("[.] Direccion de Funcion %p", pLdrLoadDll);
 
     __try {
-        PRINT("[+] Asignando contexto en memoria");
+        PRINT("[.] ASIGNANDO MEMORIA DE CONTEXTO");
         status = ZwAllocateVirtualMemory(NtCurrentProcess(), (PVOID*)&ctx, 0, &ctxSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
         if (!NT_SUCCESS(status)) {
-            PRINT("[-] Fallo de asignacion de contexto en memoria:0x%x", status);
+            PRINT("[-] Failed to allocate ctx memory:0x%X", status);
             __leave;
         }
 
-        PRINT("[+] Inicializando valores en contexto");
+        // Fue asignada la memoria?
+        if (!ctx) {
+            PRINT("[-] ERROR DE ASIGNACION DE MEMORIA DEL CONTEXTO");
+            __leave;
+        }
+
+        PRINT("[.] ASIGNANDO VALORES DE CONTEXTO");
         ctx->pLdrLoadDll = pLdrLoadDll;
         RtlInitEmptyUnicodeString(&ctx->DllName, ctx->Buffer, sizeof(ctx->Buffer));
-        RtlInitUnicodeString(&dllpath_ustr, EDRDLL);
         RtlCopyUnicodeString(&ctx->DllName, &dllpath_ustr);
 
-        PRINT("[+] Asignando ApcCode");
+        PRINT("[.] ASIGNANDO MEMORIA A 'pUserCode'");
 
         status = ZwAllocateVirtualMemory(NtCurrentProcess(), (PVOID*)&pUserApcCode, 0, &apcRoutineSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
         if (!NT_SUCCESS(status)) {
+            PRINT("[-] ERROR ASIGNANDO MEMORIA DE 'pUserApcCode' error: 0x%X", status);
             __leave;
         }
+
+        if (!pUserApcCode) {
+            PRINT("[-] ERROR ASIGNANDO MEMORIA DE 'pUserApcCode'");
+            __leave;
+        }
+
         RtlCopyMemory(pUserApcCode, (PVOID*)&UserApcRoutine, apcRoutineSize);
 
-        PRINT("[+] RtlCopyMemory");
-        PKAPC Apc = ExAllocatePool(NonPagedPool, sizeof(KAPC));
+        if (!pUserApcCode) {
+            PRINT("[-] ERROR COPIANDO MEMORIA DE 'pUserApcCode'");
+            __leave;
+        }
 
-        if(!Apc)
-        {
-            PRINT("[-] Error asignando Apc Memory");
+        PRINT("[+] MEMORIA COPIADA SATISFACTORIAMENTE");
+
+        PKAPC Apc = (KAPC*) ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), '2GAT');
+        
+        if (!Apc) {
+            PRINT("[-] ERROR ASIGNANDO MEMORIA");
             __leave;
         }
 
@@ -357,24 +358,99 @@ void InjectDLL(PEPROCESS Process) {
     }
 }
 
+// Funcion para comparar un nombre corto con el nombre completo de la llamada a funcion
+BOOLEAN IsSuffixedUnicodeString(PCUNICODE_STRING FullName, PCUNICODE_STRING ShortName, BOOLEAN CaseInsensitive) {
+    if (FullName &&
+        ShortName &&
+        ShortName->Length <= FullName->Length)
+    {
+        UNICODE_STRING ustr = {
+            ShortName->Length,
+            ustr.Length,
+            (PWSTR)RtlOffsetToPointer(FullName->Buffer, FullName->Length - ustr.Length)
+        };
+
+        return RtlEqualUnicodeString(&ustr, ShortName, CaseInsensitive);
+    }
+
+    return FALSE;
+}
+
+// Funcion para mapear si la DLL fue cargada con la funcion LdrLoadDLL
+BOOLEAN IsMappedByLdrLoadDll(PCUNICODE_STRING ShortName)
+{
+    //Check if this thread runs from within LdrLoadDll() function for the 'ShortName' module.
+    //INFO: Otherwise the call could have come from someone invoking ZwMapViewOfSection with SEC_IMAGE
+    //      Ex: smss.exe can map kernel32.dll during creation of \\KnownDlls (in that case ArbitraryUserPointer will be 0)
+    //      ex: WOW64 processes map kernel32.dll several times (32 and 64-bit version) with WOW64_IMAGE_SECTION or NOT_AN_IMAGE
+    //RETURN:
+    //		- TRUE if yes
+    UNICODE_STRING Name;
+
+    __try
+    {
+        PNT_TIB Teb = (PNT_TIB)PsGetCurrentThreadTeb();
+        if (!Teb ||
+            !Teb->ArbitraryUserPointer)
+        {
+            //This is not it
+            return FALSE;
+        }
+
+        Name.Buffer = (PWSTR)Teb->ArbitraryUserPointer;
+
+        //Check that we have a valid user-mode address
+        ProbeForRead(Name.Buffer, sizeof(WCHAR), __alignof(WCHAR));
+
+        //Check buffer length
+        Name.Length = (USHORT)wcsnlen(Name.Buffer, MAXSHORT);
+        if (Name.Length == MAXSHORT)
+        {
+            //Name is too long
+            return FALSE;
+        }
+
+        Name.Length *= sizeof(WCHAR);
+        Name.MaximumLength = Name.Length;
+
+        //See if it's our needed module
+        return IsSuffixedUnicodeString(&Name, ShortName, TRUE);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        //Something failed
+        PRINT("#EXCEPTION: (0x%X) IsMappedByLdrLoadDll", GetExceptionCode());
+    }
+
+    return FALSE;
+}
+
 // Routine to detect when a DLL is loaded
 void LoadDLLNotify(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
 {
     UNREFERENCED_PARAMETER(imageInfo);
     UNREFERENCED_PARAMETER(imageName);
+    UNREFERENCED_PARAMETER(pid);
 
     if (!imageName || !imageName->Buffer)
         return;
 
-    PEPROCESS process = NULL;
-    PUNICODE_STRING processName = NULL;
-    PsLookupProcessByProcessId(pid, &process);
-    SeLocateProcessImageName(process, &processName);
+    // Define the DLL searched
+    UNICODE_STRING DLL_SEARCHED = RTL_CONSTANT_STRING(L"\\kernel32.dll");
 
-    if (wcsstr(imageName->Buffer, found_DLL.Buffer))
+    // Filter the DLL
+    if (
+        !imageInfo->SystemModeImage &&
+        pid == PsGetCurrentProcessId() &&
+        IsSuffixedUnicodeString(imageName, &DLL_SEARCHED, TRUE) &&
+        IsMappedByLdrLoadDll(&DLL_SEARCHED)
+        )
     {
-        PRINT("DLL ENCONTRADA EN PROCESO %wZ (%d)", processName, pid);
-         InjectDLL(process);
+        GET_PROCESS(process, pid);
+
+        PRINT("[!] DLL DETECTADA EN LA CARGA");
+
+        InjectDLL(process);
     }
 }
 
@@ -394,7 +470,7 @@ void UnloadDriver(PDRIVER_OBJECT  DriverObject)
     PRINT("DRIVER UNLOADED");
 }
 
-NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
+extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
